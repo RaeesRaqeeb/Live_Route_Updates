@@ -1,0 +1,50 @@
+sudo systemctl start redis-server
+# ── Step 1: Stop and remove everything (including volumes) ───────────────────
+docker-compose down -v
+
+# ── Step 2: Rebuild and restart fresh ───────────────────────────────────────
+docker-compose up -d
+
+# ── Step 3: Wait for PostgreSQL to be fully ready ────────────────────────────
+docker logs pakistan_route_db --follow
+# Wait until you see: "database system is ready to accept connections"
+# Press Ctrl+C to stop following logs
+
+# ── Step 4: Verify the database was auto-created ─────────────────────────────
+docker exec -it pakistan_route_db psql -U postgres -c "\l"
+
+# You should see pakistan_route_ai in the list:
+# pakistan_route_ai | postgres | UTF8 ...
+
+# ── Step 5: Run Alembic migrations ───────────────────────────────────────────
+uv run alembic upgrade head
+
+# ── Step 6: Start the API ─────────────────────────────────────────────────────
+uv run uvicorn app.main:app --reload --port 8000
+
+
+sudo systemctl start redis-server
+# ── Step 1: Stop and remove everything (including volumes) ───────────────────
+docker-compose down -v
+
+# ── Step 2: Rebuild and restart fresh ───────────────────────────────────────
+docker-compose up -d
+
+# ── Step 3: Wait for PostgreSQL to be fully ready ────────────────────────────
+docker logs pakistan_route_db --follow
+# Wait until you see: "database system is ready to accept connections"
+# Press Ctrl+C to stop following logs
+
+# ── Step 4: Verify the database was auto-created ─────────────────────────────
+docker exec -it pakistan_route_db psql -U postgres -c "\l"
+
+# You should see pakistan_route_ai in the list:
+# pakistan_route_ai | postgres | UTF8 ...
+
+# ── Step 5: Run Alembic migrations ───────────────────────────────────────────
+uv run alembic upgrade head
+
+# ── Step 6: Start the API ─────────────────────────────────────────────────────
+uv run uvicorn app.main:app --reload --port 8000
+
+

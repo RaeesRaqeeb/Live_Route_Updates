@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+Guild to pakistan AI.zip
+text
+Understanding FASTapi - 2026.txt
+quick_test.py
+1 Map integration from.txt
