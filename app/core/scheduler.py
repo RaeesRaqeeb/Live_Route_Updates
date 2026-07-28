@@ -11,7 +11,7 @@ def start_scheduler():
     scheduler.add_job(
         run_scheduled_scrape,
         trigger="interval",
-        minutes=45,
+        minutes=40,
         id="route_scraper",
         next_run_time=None,  # don't fire instantly on boot; or set to now if you want immediate seed data
         max_instances=1,      # critical: never let two scrape runs overlap

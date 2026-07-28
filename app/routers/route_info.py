@@ -12,8 +12,8 @@ from sqlalchemy import select
 from app.services.route_discovery import get_or_create_route
 from app.models.scrape_result import ScrapeResult
 import hashlib
-from app.core.database import AsyncSessionLocal  #  new session for background tasks
-from app.core.dependencies import get_database   #  use this dependency
+from app.core.database import AsyncSessionLocal 
+from app.core.dependencies import get_database   
 from app.schemas.query import RouteQueryRequest
 from app.schemas.response import APIResponse, RouteInfoResponse
 from app.services.cache_service import CacheService
@@ -26,6 +26,9 @@ from app.services.weather_service import WeatherService
 from app.repositories.query_repo import QueryRepository
 from app.utils.logger import get_logger
 from app.services.query_parser import QueryParserService
+from app.services.route_pipeline import scrape_extract_and_store
+from app.services.graph_api_service import GraphAPIService
+# remove: from app.job.scheduled_scraper import scrape_and_store_route  (no longer exists there)
 router = APIRouter()
 import logging
 
@@ -73,12 +76,16 @@ async def save_query_to_db(
             await session.close()
 
 
+
+GB_ROUTES = ['Skardu','KKH','Northen areas','Hunza','Astore','Gilgit']
+
 @router.post("/route/info", response_model=APIResponse)
-async def get_route_information(
+async def get_route_information(    
     query: RouteQueryRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_database),
-    parser_service: QueryParserService = Depends(QueryParserService)
+    parser_service: QueryParserService = Depends(QueryParserService),
+    
 ):
     # 1. Detect Natural Language Input
     if query.message:
@@ -106,23 +113,25 @@ async def get_route_information(
             status_code=400, 
             detail="You must provide either a natural language 'message' or explicit 'origin' and 'destination' fields."
         )
+
    
     start_time = time.time()
     cache_key = f"{origin}:{destination}:{query.query_type}"
 
     # # ── Step 1: Redis/memory cache (unchanged) ──
     cache_service = CacheService()
-    # cached_result = await cache_service.get(cache_key)
-    # if cached_result:
-    #     cached_result["cache_hit"] = True
-    #     return APIResponse.ok(cached_result, "Served from cache")
+    cached_result = await cache_service.get(cache_key)
+    if cached_result:
+        cached_result["cache_hit"] = True
+        return APIResponse.ok(cached_result, "Served from cache")
 
     # ── Step 2: Weather — still live, it's cheap and needs to be current ──
     weather_service = WeatherService()
     weather_origin = await weather_service.get_weather(origin)
     weather_dest = await weather_service.get_weather(destination)
 
-    # ── Step 3: Get/register route, then query DB (NOT live scrape) ──
+    ## ── Step 3: Get/register route, then check DB (this IS your
+    #    "does this query already exist" check — freshness window) ──
     route = await get_or_create_route(db, origin, destination)
 
     freshness_cutoff = datetime.now(timezone.utc) - timedelta(hours=FRESHNESS_WINDOW_HOURS)
@@ -136,77 +145,34 @@ async def get_route_information(
     db_alerts = db_alerts_result.scalars().all()
 
     scraped_data = [
-    {
-        "source": a.source_name,
-        "url": a.source_url,
-        "content": a.summary or a.raw_content,
-        "scrape_success": True,
-        "error": None,
-        "from_db": True,
-        "headline": a.headline,
-        "issue_type": a.issue_type,
-        "severity": a.severity,
-        "route_affected": a.route_affected,
-        "summary": a.summary,
-        "created_at": a.created_at,
-    }
-    for a in db_alerts
-]
+        {
+            "source": a.source_name,
+            "url": a.source_url,
+            "content": a.summary or a.raw_content,
+            "scrape_success": True,
+            "error": None,
+            "from_db": True,
+            "headline": a.headline,
+            "issue_type": a.issue_type,
+            "severity": a.severity,
+            "route_affected": a.route_affected,
+            "summary": a.summary,
+            "created_at": a.created_at,
+        }
+        for a in db_alerts
+    ]
 
     data_age_minutes = 0
     if db_alerts:
         data_age_minutes = int((datetime.now(timezone.utc) - db_alerts[0].created_at).total_seconds() / 60)
     else:
-        logger.info(f"No DB data for {origin}->{destination}, live scrape + extract + persist (first-time only)")
+        logger.info(f"No fresh DB data for {origin}->{destination}, running shared pipeline (first-time/expired fallback)")
         scraper = ScraperService()
+        graph_api = GraphAPIService()
         extractor = LLMExtractor()
-        raw_results = await scraper.scrape_route_news(origin, destination)
 
-        scraped_data = []
-        route_query = f"{origin} to {destination}"
-
-        for raw in raw_results:
-            if not raw.get("scrape_success") or not raw.get("content"):
-                continue
-
-            content = raw["content"]
-            new_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-            raw_scrape = RawScrapeData(
-                source=raw["source"],
-                url=raw.get("url", ""),
-                content=content,
-            )
-
-            extracted = await extractor.extract_route_info(raw_scrape, route_query)
-            if extracted is None:  # None means extraction failed OR not route-related
-                continue
-
-            result_row = ScrapeResult(
-                route_id=route.id,
-                source_name=raw["source"],
-                source_url=raw.get("url", ""),
-                headline=extracted.headline,
-                route_affected=extracted.route_affected or route_query,
-                issue_type=extracted.issue_type,
-                severity=extracted.severity,
-                raw_content=content[:3000],
-                summary=extracted.summary,
-                content_hash=new_hash,
-                is_active=True,
-                expires_at=datetime.now(timezone.utc) + timedelta(hours=6),
-            )
-            db.add(result_row)
-
-            scraped_data.append({
-                "source": raw["source"],
-                "url": raw.get("url", ""),
-                "content": extracted.summary,
-                "scrape_success": True,
-                "error": None,
-            })
-
-        await db.commit() # ── Step 4: RAG / Answer (unchanged) ──
+        structured = await scrape_extract_and_store(db, route, scraper, graph_api, extractor)
+        scraped_data = [dict(item, from_db=True) for item in structured]
 
     logger.info(
     f"scraped_data prepared: {len(scraped_data)} items, "
@@ -240,7 +206,7 @@ async def get_route_information(
 
     # Cache in Redis for a short window even for DB-served results —
     # avoids re-querying DB + re-running weather API for rapid repeat searches
-    # await cache_service.set(cache_key, result.model_dump(), ttl=600)  # 10 min
+    await cache_service.set(cache_key, result.model_dump(), ttl=600)  # 10 min
 
     background_tasks.add_task(save_query_to_db, query, result, response_ms, False)
 

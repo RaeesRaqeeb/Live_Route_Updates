@@ -3,14 +3,12 @@ from typing import List, Optional
 from dataclasses import dataclass
 from datetime import datetime
 
-from google import genai
-from google.genai import types
-
 from app.core.config import settings
 from app.schemas.scrape import ExtractedRouteInfo, IssueTypeEnum, SeverityEnum
 from app.schemas.response import RouteAlert, AlertLevel, WeatherInfo
 from app.utils.logger import get_logger
 from app.utils.rate_limiter import groq_limiter
+from openai import AsyncOpenAI
 
 logger = get_logger(__name__)
 
@@ -24,8 +22,13 @@ class RAGAnswer:
 
 class RAGService:
     def __init__(self):
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self.model = settings.GEMINI_ANSWER_MODEL
+        # Groq uses the OpenAI SDK standard
+        self.client = AsyncOpenAI(
+            api_key=settings.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1",
+            timeout=20.0,
+        )
+        self.model = settings.GROQ_MODEL
 
     def _determine_alert_level(self, items: List[dict]) -> AlertLevel:
         """items: list of dicts with a 'severity' key (lowercase string)."""
@@ -78,20 +81,26 @@ class RAGService:
         return "\n\n".join(context_parts) if context_parts else "No specific alerts found."
 
     async def _generate_summary(self, prompt: str) -> str:
-        config = types.GenerateContentConfig(
-            temperature=0.3,
-            max_output_tokens=600,
-            system_instruction="You are a concise Pakistan travel safety assistant.",
-        )
-        await groq_limiter.acquire()
-        response = await self.client.aio.models.generate_content(
+        try:
+            await groq_limiter.acquire()
+        except Exception as e:
+            logger.info("There is some issue here:",str(e))
+            
+        print("WE ARE REACHING HERE OR NOT?")
+        # Updated to use OpenAI Chat Completions format for Groq
+        response = await self.client.chat.completions.create(
             model=self.model,
-            contents=prompt,
-            config=config,
+            messages=[
+                {"role": "system", "content": "You are a concise Pakistan travel safety assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=600,
         )
-        text = (response.text or "").strip()
+        
+        text = response.choices[0].message.content.strip() if response.choices else ""
         if not text:
-            raise ValueError("Empty response from Gemini")
+            raise ValueError("Empty response from Groq")
         return text
 
     def _normalize_docs(self, scraped_docs: List[dict]) -> List[dict]:
@@ -121,6 +130,7 @@ class RAGService:
         scraped_docs: List[dict],
         weather_origin: Optional[WeatherInfo] = None,
         weather_destination: Optional[WeatherInfo] = None,
+        data_fetch_failed: bool = False  # Passed as an argument instead of using '...' placeholder
     ) -> RAGAnswer:
         """
         Build final answer using extracted data + weather.
@@ -131,21 +141,26 @@ class RAGService:
         db_docs = [d for d in scraped_docs if d.get("from_db")]
         raw_docs = [d for d in scraped_docs if not d.get("from_db")]
         logger.info(f"RAG input split: {len(db_docs)} from DB (skip extraction), {len(raw_docs)} raw (needs extraction)")
+        
         # ── Step 1: only run extraction on genuinely raw docs ──
         extracted_from_raw = []
         if raw_docs:
             from app.services.llm_extractor import LLMExtractor
             extractor = LLMExtractor()
+            extractor = LLMExtractor()
             extracted_items = await extractor.batch_extract(raw_docs, query)
-            for item in extracted_items:
+
+            # Unpack the tuple into 'src_dict' and 'item_model'
+            for src_dict, item_model in extracted_items:
                 extracted_from_raw.append({
-                    "headline": item.headline,
-                    "issue_type": item.issue_type.value,
-                    "severity": item.severity.value,
-                    "route_affected": item.route_affected,
-                    "summary": item.summary,
-                    "source": getattr(item, "source", "scraped"),
-                    "source_url": getattr(item, "source_url", ""),
+                    "headline": item_model.headline,
+                    "issue_type": item_model.issue_type.value,
+                    "severity": item_model.severity.value,
+                    "route_affected": item_model.route_affected,
+                    "summary": item_model.summary,
+                    # Pull source metadata directly from the source dictionary
+                    "source": src_dict.get("source", "scraped"),
+                    "source_url": src_dict.get("url", ""),
                     "scraped_at": datetime.utcnow(),
                 })
 
@@ -161,12 +176,15 @@ class RAGService:
         has_weather = weather_origin is not None or weather_destination is not None
         has_alerts = len(all_items) > 0
 
-        if not has_weather and not has_alerts:
-            logger.info(f"Skipping summary call — no data available for '{query}'")
+        if not has_alerts and not data_fetch_failed:
+            # Genuinely queried sources successfully and found nothing — safe to say "no alerts"
+            pass  # Proceed to generate normal summary
+        elif not has_alerts and data_fetch_failed:
             return RAGAnswer(
                 summary=(
-                    f"No verified route alerts or weather data are currently available "
-                    f"for {query}. Please check official sources like NHMP or PMD directly."
+                    f"We couldn't retrieve current road/route data for {query} right now "
+                    f"due to a temporary data source issue. This does NOT confirm the route "
+                    f"is clear — please check NHMP (nhmp.gov.pk) or PMD directly before traveling."
                 ),
                 alert_level=AlertLevel.UNKNOWN,
                 alerts=[],
@@ -174,22 +192,22 @@ class RAGService:
 
         # ── Step 4: Generate final narrative summary ──
         prompt = f"""
-                    You are a Pakistan travel assistant providing route intelligence.
+                You are a Pakistan travel assistant providing route intelligence.
 
-                    USER'S ROUTE: {query}
+                USER'S ROUTE: {query}
 
-                    CURRENT INFORMATION:
-                    {context}
+                CURRENT INFORMATION:
+                {context}
 
-                    Write a concise, helpful travel briefing (3-5 sentences) for this route covering:
-                    1. Overall road safety status
-                    2. Key weather conditions
-                    3. Any active alerts or issues
-                    4. A practical recommendation for the traveler
+                Write a concise, helpful travel briefing (3-5 sentences) for this route covering:
+                1. Overall road safety status
+                2. Key weather conditions
+                3. Any active alerts or issues
+                4. A practical recommendation for the traveler
 
-                    Be direct and specific. Mention city/highway names. Write in English.
-                    If no issues found, confirm the route appears clear.
-                    """.strip()
+                Be direct and specific. Mention city/highway names. Write in English.
+                If no issues found, confirm the route appears clear.
+                """.strip()
 
         try:
             summary = await self._generate_summary(prompt)

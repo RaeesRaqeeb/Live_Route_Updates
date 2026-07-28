@@ -62,3 +62,12 @@ class RawScrapeData(BaseModel):
     content: str                  # fit_markdown from Crawl4AI
     scrape_success: bool = True
     error: Optional[str] = None
+
+from pydantic import BaseModel
+from typing import List
+
+class BatchExtractedItem(ExtractedRouteInfo):
+    source_id: str  # matches the label we inject in the prompt, e.g. "SRC_0"
+
+class BatchExtractionResult(BaseModel):
+    items: List[BatchExtractedItem]

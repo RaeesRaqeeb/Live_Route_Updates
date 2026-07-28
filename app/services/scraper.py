@@ -1,3 +1,4 @@
+#app/services/scraper.py
 import asyncio
 import json
 from typing import List, Dict, Any
@@ -17,25 +18,25 @@ PAKISTAN_SOURCES = {
 #   "gbdma_fb_via_google": "https://www.google.com/search?q=site:facebook.com/p/Gilgit-Baltistan-Disaster-Management-Authority-100064570067356/+{query}",
     
     # Search inside the KKH Updates Facebook page using Google
-    "kkh_fb_via_google": "https://www.google.com/search?q=site:facebook.com/p/KKH-Updates-100057494289275/+{query}",
+    # "kkh_fb_via_google": "https://www.google.com/search?q=site:facebook.com/p/KKH-Updates-100057494289275/+{query}",
     # "nhmp": "https://nhmp.gov.pk/latest-news",
     # "tribune": "https://tribune.com.pk/search?q={query}",
     # "pmd": "https://www.pmd.gov.pk/en/",
     # "NHMP":"https://beta.nhmp.gov.pk/ta/public/viewtravel.aspx",
     # "googl":"https://news.google.com/rss/search?q={query}",
     # Replace these:
-"gbdma_fb_via_google": "https://www.google.com/search?q=site:facebook.com/...",
+# "gbdma_fb_via_google": "https://www.google.com/search?q=site:facebook.com/...",
 # With direct:
-"gbdma_fb": "https://mbasic.facebook.com/p/Gilgit-Baltistan-Disaster-Management-Authority-100064570067356/",
-"kkh_fb": "https://mbasic.facebook.com/p/KKH-Updates-100057494289275/",
+# "gbdma_fb": "https://mbasic.facebook.com/p/Gilgit-Baltistan-Disaster-Management-Authority-100064570067356/",
+# "kkh_fb": "https://mbasic.facebook.com/p/KKH-Updates-100057494289275/",
 }
 
 
 # ── Direct FB pages - crawlable via mbasic ──
-DIRECT_FB_SOURCES = {
-    "gbdma_fb": "https://mbasic.facebook.com/p/Gilgit-Baltistan-Disaster-Management-Authority-100064570067356/",
-    "kkh_fb": "https://mbasic.facebook.com/p/KKH-Updates-100057494289275/",
-}
+# DIRECT_FB_SOURCES = {
+#     "gbdma_fb": "https://mbasic.facebook.com/p/Gilgit-Baltistan-Disaster-Management-Authority-100064570067356/",
+#     "kkh_fb": "https://mbasic.facebook.com/p/KKH-Updates-100057494289275/",
+# }
 
 SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
 NHMP_API_BASE = "http://cpo.nhmp.gov.pk:6788"
@@ -166,28 +167,28 @@ class ScraperService:
         except Exception as e:
             return self._empty_result(source_name, str(e))
 
-    async def scrape_route_news(self, origin: str, destination: str) -> List[Dict[str, Any]]:
-        results = []
-        
-        # 1. NHMP
-        results.append(await self._fetch_nhmp_direct(origin, destination))
-
-        # 2. SerpAPI Google -> Facebook
+    async def serpapi(self,origin:str,destination:str)-> List[Dict[str,Any]]:
+        results=[]
         serp_queries = self._build_serp_queries(origin, destination)
         serp_tasks = [self._fetch_serpapi(q["q"], q["label"]) for q in serp_queries]
         serp_results = await asyncio.gather(*serp_tasks)
         results.extend(serp_results)
+        logger.info(f"Total Success: {len([r for r in results if r['scrape_success']])}/{len(results)}")
+        return results
 
-        # 3. Direct mbasic FB crawl
-        semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_SCRAPERS)
-        async def safe_scrape(crawler, name, url):
-            async with semaphore:
-                return await self.scrape_single_source(crawler, name, url)
+    
+    async def scrape_route_news(self, origin: str, destination: str) -> List[Dict[str, Any]]:
+        results = []
 
-        async with AsyncWebCrawler(config=self.browser_config) as crawler:
-            tasks = [safe_scrape(crawler, name, url) for name, url in DIRECT_FB_SOURCES.items()]
-            fb_results = await asyncio.gather(*tasks)
-            results.extend(fb_results)
+
+        
+        # 1. NHMP
+        results.append(await self._fetch_nhmp_direct(origin, destination))
+
+       
+        
+
+      
 
         logger.info(f"Total Success: {len([r for r in results if r['scrape_success']])}/{len(results)}")
         return results

@@ -34,6 +34,7 @@ class GlobalGeminiLimiter:
             wait = self.min_interval - (now - self._last_call)
             if wait > 0:
                 logger.debug(f"Gemini limiter: waiting {wait:.2f}s")
+                print("Or We Stuck Here?")
                 await asyncio.sleep(wait)
             self._last_call = time.monotonic()
 
