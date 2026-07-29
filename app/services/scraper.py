@@ -41,13 +41,79 @@ PAKISTAN_SOURCES = {
 SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
 NHMP_API_BASE = "http://cpo.nhmp.gov.pk:6788"
 NHMP_API_ENDPOINT = f"{NHMP_API_BASE}/api/TravelAdvisory/FilteredAdvisory"
+GB_KKH_KEYWORDS = {"skardu", "gilgit", "hunza", "gb", "kkh","astore",'baltistan'}
 
-ROAD_MAPPER = {
-    ("rawalpindi", "skardu"): "S-1",
-    ("islamabad", "skardu"): "S-1",
-    ("islamabad", "gilgit"): "N-15",
-    ("lahore", "islamabad"): "M-2",
+NHMP_ROAD_MAP: dict[tuple[str, str], tuple[str, str, str]] = {
+    ("islamabad", "peshawar"): ("Motorway", "M1/Motorway M-1", "Islamabad to Peshawar"),
+    ("peshawar", "islamabad"): ("Hightway", "N5/GT Road", "Peshawar to Islamabad"),
+
+    ("lahore", "islamabad"): ("Motorway", "M2/Motorway M-2", "Lahore to Islamabad"),
+    ("islamabad", "lahore"): ("Hightway", "N5/GT Road", "Islamabad to Lahore"),
+
+    ("lahore", "abdul hakim"): ("Motorway", "M3/Motorway M-3", "Lahore to Abdul Hakim"),
+    ("abdul hakim", "lahore"): ("Motorway", "M3/Motorway M-3", "Lahore to Abdul Hakim"),
+
+    ("pindi bhattian", "multan"): ("Motorway", "M4/Motorway M-4", "Pindi Bhattian to Multan"),
+    ("multan", "pindi bhattian"): ("Motorway", "M4/Motorway M-4", "Pindi Bhattian to Multan"),
+
+    ("multan", "sukkur"): ("Motorway", "M5/Motorway M-5", "Multan to Sukkur"),
+    ("sukkur", "multan"): ("Motorway", "M5/Motorway M-5", "Multan to Sukkur"),
+
+    ("lahore", "multan"): ("Hightway", "N5/GT Road", "Lahore to Multan"),
+    ("multan", "lahore"): ("Hightway", "N5/GT Road", "Lahore to Multan"),
+
+    ("multan", "rahimyar khan"): ("Hightway", "N5/GT Road", "Multan to Rahimyar Khan"),
+    ("rahimyar khan", "multan"): ("Hightway", "N5/GT Road", "Multan to Rahimyar Khan"),
+
+    ("sukkur", "rahimyar khan"): ("Hightway", "N5/GT Road", "Rahimyar Khan to Sukkur"),
+    ("rahimyar khan", "sukkur"): ("Hightway", "N5/GT Road", "Rahimyar Khan to Sukkur"),
+
+
+    ("sukkur", "hyderabad"): ("Hightway", "N5/GT Road", "Sukkur to Hyderabad"),
+    ("hyderabad", "sukkur"): ("Hightway", "N5/GT Road", "Sukkur to Hyderabad"),
+
+
+    ("hyderabad", "karachi"): ("Motorway", "M9/Motorway M-9", "Hyderabad to Karachi"),
+    ("karachi", "hyderabad"): ("Motorway", "M9/Motorway M-9", "Hyderabad to Karachi"),
+
+    # NOTE: duplicate section name also exists under N5/GT Road — see below
+
+    ("lahore", "sialkot"): ("Motorway", "M11/Lahore Sialkot Motorway", "Lahore to Sialkot"),
+    ("sialkot", "lahore"): ("Motorway", "M11/Lahore Sialkot Motorway", "Lahore to Sialkot"),
+
+    ("hakla", "dera ismail khan"): ("Motorway", "M14/Motorway M-14", "Hakla to Dera Ismail Khan"),
+    ("dera ismail khan", "hakla"): ("Motorway", "M14/Motorway M-14", "Hakla to Dera Ismail Khan"),
+
+    ("burhan", "thakot"): ("Motorway", "M15/Motorway M-15", "Burhan to Thakot"),
+    ("thakot", "burhan"): ("Motorway", "M15/Motorway M-15", "Burhan to Thakot"),
+
+    ("kernal sher khan", "swat"): ("Motorway", "M16/Swat Expressway", "Kernal Sher Khan to Swat"),
+    ("swat", "kernal sher khan"): ("Motorway", "M16/Swat Expressway", "Kernal Sher Khan to Swat"),
+
+    ("karachi", "karachi"): ("Expressway", "LEW/Lyari Expressway", "Karachi to Karachi"),
+
+    ("gwadar", "makola"): ("Hightway", "N10/Coastal Highway", "Gwadar to Makola"),
+    ("makola", "gwadar"): ("Hightway", "N10/Coastal Highway", "Gwadar to Makola"),
+
+    ("hub", "uthal"): ("Hightway", "N25/RDC Highway", "Hub to Uthal"),
+    ("uthal", "hub"): ("Hightway", "N25/RDC Highway", "Hub to Uthal"),
+
+    ("kalat", "quetta"): ("Hightway", "N25/RDC Highway", "Kalat to Quetta"),
+    ("quetta", "kalat"): ("Hightway", "N25/RDC Highway", "Kalat to Quetta"),
+
+    ("quetta", "pishin"): ("Hightway", "N25/RDC Highway", "Quetta to Pishin"),
+    ("pishin", "quetta"): ("Hightway", "N25/RDC Highway", "Quetta to Pishin"),
+
+    ("kuchlak", "muslim bagh"): ("Hightway", "N50/N-50", "Kuchlak to Muslim Bagh"),
+    ("muslim bagh", "kuchlak"): ("Hightway", "N50/N-50", "Kuchlak to Muslim Bagh"),
+
+    ("sehwan", "ratodero"): ("Hightway", "N55/Indus Highway", "Sehwan to Ratodero"),
+    ("ratodero", "sehwan"): ("Hightway", "N55/Indus Highway", "Sehwan to Ratodero"),
+
+    ("islamabad", "murree"): ("Hightway", "N75/IMDC", "Islamabad to Murree"),
+    ("murree", "islamabad"): ("Hightway", "N75/IMDC", "Islamabad to Murree"),
 }
+
 
 def _get_fit_markdown(result) -> str:
     if hasattr(result, "markdown") and result.markdown:
@@ -94,28 +160,74 @@ class ScraperService:
         queries.append({"label": "google_news", "q": base_rd})
         return queries
 
-    def _detect_road(self, origin: str, destination: str) -> str:
-        o, d = origin.lower(), destination.lower()
-        if (o, d) in ROAD_MAPPER: return ROAD_MAPPER[(o, d)]
-        if (d, o) in ROAD_MAPPER: return ROAD_MAPPER[(d, o)]
-        if any(k in o+d for k in ['skardu','gilgit','hunza']): return "S-1"
-        return f"{origin} to {destination}"
+    def _detect_road(self, origin: str, destination: str) -> tuple[str, str, str] | None:
+        """
+        Returns (network, road, section) for NHMP's FilteredAdvisory API,
+        or None if this route isn't tracked by NHMP (e.g. GB/KKH) — caller
+        should skip the NHMP call entirely in that case, not just expect a 404.
+        """
+        o, d = origin.strip().lower(), destination.strip().lower()
+
+        if any(k in o or k in d for k in GB_KKH_KEYWORDS):
+            return None
+
+        if (o, d) in NHMP_ROAD_MAP:
+            return NHMP_ROAD_MAP[(o, d)]
+        if (d, o) in NHMP_ROAD_MAP:
+            return NHMP_ROAD_MAP[(d, o)]
+
+        return None
 
     def _empty_result(self, src, err):
         return {"source": src, "url": "", "content": "", "scrape_success": False, "error": err}
 
     async def _fetch_nhmp_direct(self, origin: str, destination: str) -> Dict[str, Any]:
-        road_name = self._detect_road(origin, destination)
-        params = {"network": "Highway", "road": road_name, "section": f"{origin} to {destination}", "filter": "true"}
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(NHMP_API_ENDPOINT, params=params, timeout=10) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        return {"source": "NHMP_API", "url": str(resp.url), "content": json.dumps(data)[:4000], "scrape_success": True, "error": None}
-                    return self._empty_result("NHMP_API", f"HTTP {resp.status}")
-        except Exception as e:
-            return self._empty_result("NHMP_API", str(e))
+        print("*"*20)
+        print("Are we here2?")
+        print("*"*20)
+        route = self._detect_road(origin, destination)
+        if route is None:
+            print("*"*20)
+            print("Are we here TWO 2?")
+            print("*"*20)
+            logger.info(f"{origin}->{destination} not in NHMP road list, skipping NHMP_API call")
+            return self._empty_result("NHMP_API", "Route not tracked by NHMP")
+        print("*"*20)
+        print("Are we here?")
+        print("*"*20)
+        network, road, section = route
+        params = {"network": network, "road": road, "section": section, "filter": "true"}
+        check = False
+        while(1):
+            print("*"*20)
+            print("Are we here?")
+            print("*"*20)
+            if (check):
+                params = {"network":network , "road": road, "section": section, "filter": "true"}
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(NHMP_API_ENDPOINT, params=params, timeout=10) as resp:
+                        print("*"*20)
+                        print("Are we here 2 ?")
+                        print("*"*20)
+                        print("Status:", resp.status)
+                        if resp.status == 200:
+                            data = await resp.json()
+                            print("*"*20)
+                            print("url:")
+                            print("NHMP DAta :", data)
+                            print("*"*20)
+                            return {"source": "NHMP_API", "url": str(resp.url), "content": json.dumps(data)[:4000], "scrape_success": True, "error": None}
+
+
+                        if resp.status == 404:
+                            check = True
+                            continue
+
+
+            except Exception as e:
+                return self._empty_result("NHMP_API", str(e))
 
     async def _fetch_serpapi(self, query: str, label: str) -> Dict[str, Any]:
         if not self.serpapi_key:

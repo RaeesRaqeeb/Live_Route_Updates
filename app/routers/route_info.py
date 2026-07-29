@@ -119,11 +119,11 @@ async def get_route_information(
     cache_key = f"{origin}:{destination}:{query.query_type}"
 
     # # ── Step 1: Redis/memory cache (unchanged) ──
-    cache_service = CacheService()
-    cached_result = await cache_service.get(cache_key)
-    if cached_result:
-        cached_result["cache_hit"] = True
-        return APIResponse.ok(cached_result, "Served from cache")
+    # cache_service = CacheService()
+    # cached_result = await cache_service.get(cache_key)
+    # if cached_result:
+    #     cached_result["cache_hit"] = True
+    #     return APIResponse.ok(cached_result, "Served from cache")
 
     # ── Step 2: Weather — still live, it's cheap and needs to be current ──
     weather_service = WeatherService()
@@ -206,7 +206,7 @@ async def get_route_information(
 
     # Cache in Redis for a short window even for DB-served results —
     # avoids re-querying DB + re-running weather API for rapid repeat searches
-    await cache_service.set(cache_key, result.model_dump(), ttl=600)  # 10 min
+    # await cache_service.set(cache_key, result.model_dump(), ttl=600)  # 10 min
 
     background_tasks.add_task(save_query_to_db, query, result, response_ms, False)
 

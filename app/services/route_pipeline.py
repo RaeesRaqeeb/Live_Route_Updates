@@ -24,8 +24,20 @@ def _hash_content(content: str) -> str:
 
 
 def is_gb_route(origin: str, destination: str) -> bool:
-    combined = f"{destination}".lower()
-    return any(k in combined for k in GB_KEYWORDS)
+    origin = origin.lower()
+    print("*"*20)
+    print("Kai scene hai?")
+    print("*"*20)
+
+    destination = destination.lower()
+    if ( origin in GB_KEYWORDS) or (destination in GB_KEYWORDS):
+        print("*"*20)
+        print("Kai scene hai?")
+        print("*"*20)
+
+        return True
+    else :
+        return False
 
 # app/services/route_pipeline.py — fetch_raw_sources, revised
 
@@ -86,7 +98,9 @@ async def scrape_extract_and_store(
     except Exception as e:
         logger.error(f"There is some issue with getting data: {e}")
         raw_results = []
-
+    print("*"*20)
+    print("raw data:",raw_results)
+    print("*"*20)
     structured_items: List[Dict[str, Any]] = []
     to_extract: List[dict] = []
     hash_by_source_url: Dict[str, str] = {}  # keyed by (source,url) since we can't index-map anymore
@@ -94,7 +108,9 @@ async def scrape_extract_and_store(
     for raw in raw_results:
         if not raw.get("scrape_success") or not raw.get("content"):
             continue
-
+        print("*"*20)
+        print("raw data:",raw)
+        print("*"*20)
         content = raw["content"]
         new_hash = _hash_content(content)
 
@@ -119,6 +135,9 @@ async def scrape_extract_and_store(
         key = f"{raw['source']}::{raw.get('url','')}"
         hash_by_source_url[key] = new_hash
         to_extract.append(raw)
+    print("*"*20)
+    print("Extracted :", to_extract)
+    print("*"*20)
 
     # ── ONE Groq call covers every new/changed item on this route ──
     if to_extract:
@@ -149,5 +168,8 @@ async def scrape_extract_and_store(
 
     if commit:
         await session.commit()
+    print("*"*20)
+    print("strucuted data:",structured_items)
+    print("*"*20)
 
     return structured_items

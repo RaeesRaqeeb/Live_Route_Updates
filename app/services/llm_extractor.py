@@ -97,7 +97,7 @@ class LLMExtractor:
             return []
 
         # Guard against context blowup on GB routes with many sources
-        MAX_ITEMS_PER_BATCH = 12
+        MAX_ITEMS_PER_BATCH = 1
         PER_ITEM_CHAR_LIMIT = 1200  # smaller than before since multiple share one prompt
 
         batch = valid_results[:MAX_ITEMS_PER_BATCH]
