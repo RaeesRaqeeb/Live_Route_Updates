@@ -30,12 +30,13 @@ async def run_scheduled_scrape():
         routes = await get_active_routes(session)
         logger.info(f"Scraping {len(routes)} active routes")
 
-        for route in routes:
-            try:
-                await scrape_extract_and_store(session, route, scraper, graph_api, extractor)
-            except Exception as e:
-                logger.error(f"Pipeline failed for route {route.id} ({route.origin_city}->{route.destination_city}): {e}")
-            await asyncio.sleep(5)  # politeness gap between routes
+
+        try:
+            await scrape_extract_and_store(session, routes, scraper, graph_api, extractor)
+
+        except Exception as e:
+            logger.error(f"Pipeline failed for route : {e}")
+        await asyncio.sleep(5)  # politeness gap between routes
 
         # Expire stale alerts
         await session.execute(

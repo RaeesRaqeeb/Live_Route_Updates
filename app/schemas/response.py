@@ -54,6 +54,10 @@ class RouteInfoResponse(BaseModel):
     cache_hit: bool = False
     data_freshness_minutes: int = 0        # How old is the data?
     response_time_ms: float = 0.0
+    total_token: int =0
+    # in RouteInfoResponse schema, add:
+    data_received_at: Optional[datetime] = None
+    next_update_expected_at: Optional[datetime] = None
 
     class Config:
         json_schema_extra = {

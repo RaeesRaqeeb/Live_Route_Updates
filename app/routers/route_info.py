@@ -19,6 +19,7 @@ from app.schemas.response import APIResponse, RouteInfoResponse
 from app.services.cache_service import CacheService
 from app.services.rag_service import RAGService
 from app.services.scraper import ScraperService
+from app.models.route import Route
 # app/routers/route_info.py
 from app.schemas.scrape import RawScrapeData          # ← from schemas, not services
 from app.services.llm_extractor import LLMExtractor    # ← class is LLMExtractor, not LLMExtractorService
@@ -65,7 +66,7 @@ async def save_query_to_db(
                 cache_hit=cache_hit,
                 sources_used=result.sources_scraped,
                 final_answer=result.overall_summary,
-                token_count=0,  # you can fill this later if you track tokens
+                token_count=result.total_token,  # you can fill this later if you track tokens
             )
             await session.commit()
         except Exception as e:
@@ -119,7 +120,7 @@ async def get_route_information(
     cache_key = f"{origin}:{destination}:{query.query_type}"
 
     # # ── Step 1: Redis/memory cache (unchanged) ──
-    # cache_service = CacheService()
+    cache_service = CacheService()
     # cached_result = await cache_service.get(cache_key)
     # if cached_result:
     #     cached_result["cache_hit"] = True
@@ -140,10 +141,25 @@ async def get_route_information(
             ScrapeResult.route_id == route.id,
             ScrapeResult.is_active == True,
             ScrapeResult.created_at >= freshness_cutoff,
-        ).order_by(ScrapeResult.created_at.desc())
+            ).order_by(ScrapeResult.created_at.desc())
     )
     db_alerts = db_alerts_result.scalars().all()
-
+    is_corridor_fallback = False
+    total_token =[]
+    if not db_alerts and route.corridor:
+        corridor_result = await db.execute(
+            select(ScrapeResult)
+            # Use the capital-R 'Route' class for the join and condition
+            .join(Route, Route.id == ScrapeResult.route_id)
+            .where(
+                Route.corridor == route.corridor,  # Table Column == Instance Value
+                ScrapeResult.is_active == True,
+                ScrapeResult.created_at >= freshness_cutoff,
+                )
+            .order_by(ScrapeResult.created_at.desc())
+        )
+        db_alerts = corridor_result.scalars().all()
+        is_corridor_fallback = bool(db_alerts)
     scraped_data = [
         {
             "source": a.source_name,
@@ -157,28 +173,45 @@ async def get_route_information(
             "severity": a.severity,
             "route_affected": a.route_affected,
             "summary": a.summary,
+            "corridor_fallback": is_corridor_fallback,
             "created_at": a.created_at,
         }
         for a in db_alerts
     ]
-
+    total_token = 0
     data_age_minutes = 0
+
+    # in route_info.py, where data_age_minutes is computed:
+    data_received_at = None
+    next_update_expected_at = None
     if db_alerts:
         data_age_minutes = int((datetime.now(timezone.utc) - db_alerts[0].created_at).total_seconds() / 60)
+        data_received_at = db_alerts[0].created_at
+        next_update_expected_at = data_received_at + timedelta(minutes=45)  # match scheduler interval, not FRESHNESS_WINDOW_HOURS
     else:
         logger.info(f"No fresh DB data for {origin}->{destination}, running shared pipeline (first-time/expired fallback)")
         scraper = ScraperService()
         graph_api = GraphAPIService()
         extractor = LLMExtractor()
 
-        structured = await scrape_extract_and_store(db, route, scraper, graph_api, extractor)
-        scraped_data = [dict(item, from_db=True) for item in structured]
+        # Fix 4: Unpack the tuple cleanly directly into two variables
 
-    logger.info(
-    f"scraped_data prepared: {len(scraped_data)} items, "
-    f"from_db={sum(1 for d in scraped_data if d.get('from_db'))}, "
-    f"raw={sum(1 for d in scraped_data if not d.get('from_db'))}"
-)
+        structured, tokens_used = await scrape_extract_and_store(db, route, scraper, graph_api, extractor)
+
+        # Extract the integer from the dictionary.
+        # We use isinstance() just in case no extraction happened and it defaulted to 0.
+        if isinstance(tokens_used, dict):
+            total_token += tokens_used.get("total_tokens", 0)
+        else:
+            total_token += tokens_used  # If it's already an integer (like our default 0)
+
+        scraped_data = [dict(item, from_db=True) for item in structured]
+        # ...
+        logger.info(
+            f"scraped_data prepared: {len(scraped_data)} items, "
+            f"from_db={sum(1 for d in scraped_data if d.get('from_db'))}, "
+            f"raw={sum(1 for d in scraped_data if not d.get('from_db'))}"
+        )
     rag = RAGService()
     answer = await rag.answer_route_query(
         query=f"{origin} to {destination}",
@@ -188,6 +221,9 @@ async def get_route_information(
     )
 
     response_ms = (time.time() - start_time) * 1000.0
+    print("*"*20)
+    print("Token count:",total_token)
+    print("*"*20)
 
     result = RouteInfoResponse(
         origin=origin,
@@ -202,12 +238,17 @@ async def get_route_information(
         cache_hit=False,
         response_time_ms=round(response_ms, 2),
         data_freshness_minutes=data_age_minutes,
+        total_token = total_token,
+
     )
 
     # Cache in Redis for a short window even for DB-served results —
     # avoids re-querying DB + re-running weather API for rapid repeat searches
-    # await cache_service.set(cache_key, result.model_dump(), ttl=600)  # 10 min
+    await cache_service.set(cache_key, result.model_dump(), ttl=600)  # 10 min
+    print("*"*20)
+    print("Final response :", result)
+    print("*"*20)
 
     background_tasks.add_task(save_query_to_db, query, result, response_ms, False)
-
+    # await save_query_to_db(query,result,response_ms,False)
     return APIResponse.ok(result, "Route information fetched successfully")

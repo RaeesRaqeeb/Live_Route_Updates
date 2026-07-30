@@ -17,8 +17,7 @@ docker exec -it pakistan_route_db psql -U postgres -c "\l"
 # pakistan_route_ai | postgres | UTF8 ...
 
 # ── Step 5: Run Alembic migrations ───────────────────────────────────────────
-uv run alembic upgrade head
-
+uv run alembic stamp head
 # ── Step 6: Start the API ─────────────────────────────────────────────────────
 uv run uvicorn app.main:app --reload --port 8000
 

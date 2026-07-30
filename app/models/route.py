@@ -21,3 +21,4 @@ class Route(Base, TimestampMixin):
     is_active         = Column(Boolean, default=True)
     description       = Column(Text)
     scrape_results    = relationship("ScrapeResult", back_populates="route")
+    corridor = Column(String(100))

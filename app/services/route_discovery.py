@@ -1,7 +1,7 @@
 # app/services/route_discovery.py
 from sqlalchemy import select
 from app.models.route import Route
-
+from app.services.corridor import get_corridor
 
 async def get_or_create_route(session, origin: str, destination: str) -> Route:
     origin_n, dest_n = origin.strip().title(), destination.strip().title()
@@ -10,6 +10,7 @@ async def get_or_create_route(session, origin: str, destination: str) -> Route:
         select(Route).where(
             Route.origin_city == origin_n,
             Route.destination_city == dest_n,
+            Route.corridor == get_corridor(origin_n, dest_n),
         )
     )
     route = result.scalar_one_or_none()
@@ -20,6 +21,7 @@ async def get_or_create_route(session, origin: str, destination: str) -> Route:
     route = Route(
         origin_city=origin_n,
         destination_city=dest_n,
+        corridor=get_corridor(origin_n, dest_n),
         is_active=True,
     )
     session.add(route)

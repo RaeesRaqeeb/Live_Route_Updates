@@ -123,14 +123,13 @@ class RAGService:
                     "scraped_at": doc.get("created_at", datetime.utcnow()),
                 })
         return normalized
-
     async def answer_route_query(
-        self,
-        query: str,
-        scraped_docs: List[dict],
-        weather_origin: Optional[WeatherInfo] = None,
-        weather_destination: Optional[WeatherInfo] = None,
-        data_fetch_failed: bool = False  # Passed as an argument instead of using '...' placeholder
+            self,
+            query: str,
+            scraped_docs: List[dict],
+            weather_origin: Optional[WeatherInfo] = None,
+            weather_destination: Optional[WeatherInfo] = None,
+            data_fetch_failed: bool = False
     ) -> RAGAnswer:
         """
         Build final answer using extracted data + weather.
@@ -141,13 +140,13 @@ class RAGService:
         db_docs = [d for d in scraped_docs if d.get("from_db")]
         raw_docs = [d for d in scraped_docs if not d.get("from_db")]
         logger.info(f"RAG input split: {len(db_docs)} from DB (skip extraction), {len(raw_docs)} raw (needs extraction)")
-        
+
         # ── Step 1: only run extraction on genuinely raw docs ──
         extracted_from_raw = []
         if raw_docs:
             from app.services.llm_extractor import LLMExtractor
             extractor = LLMExtractor()
-            extractor = LLMExtractor()
+
             extracted_items = await extractor.batch_extract(raw_docs, query)
 
             # Unpack the tuple into 'src_dict' and 'item_model'
@@ -158,6 +157,7 @@ class RAGService:
                     "severity": item_model.severity.value,
                     "route_affected": item_model.route_affected,
                     "summary": item_model.summary,
+                    "corridor_fallback": item_model.corridor_fallback,
                     # Pull source metadata directly from the source dictionary
                     "source": src_dict.get("source", "scraped"),
                     "source_url": src_dict.get("url", ""),
@@ -176,6 +176,9 @@ class RAGService:
         has_weather = weather_origin is not None or weather_destination is not None
         has_alerts = len(all_items) > 0
 
+        # Check if ANY of the data relied on a corridor fallback
+        has_corridor_fallback = any(i.get("corridor_fallback", False) for i in all_items)
+
         if not has_alerts and not data_fetch_failed:
             # Genuinely queried sources successfully and found nothing — safe to say "no alerts"
             pass  # Proceed to generate normal summary
@@ -191,23 +194,35 @@ class RAGService:
             )
 
         # ── Step 4: Generate final narrative summary ──
+
+        # Dynamically inject the caveat instruction if using fallback data
+        fallback_instruction = ""
+        if has_corridor_fallback:
+            fallback_instruction = (
+                "\nCRITICAL INSTRUCTION FOR THIS ROUTE:\n"
+                "We do not have direct reports for this exact route. The alerts in the CURRENT INFORMATION "
+                "are based on the broader highway/corridor. You MUST explicitly caveat your summary "
+                "(e.g., 'While there are no direct reports for your exact route, the broader corridor shows...'). "
+                "Do NOT present these alerts as route-specific certainty or falsely specific facts.\n"
+            )
+
         prompt = f"""
-                You are a Pakistan travel assistant providing route intelligence.
-
-                USER'S ROUTE: {query}
-
-                CURRENT INFORMATION:
-                {context}
-
-                Write a concise, helpful travel briefing (3-5 sentences) for this route covering:
-                1. Overall road safety status
-                2. Key weather conditions
-                3. Any active alerts or issues
-                4. A practical recommendation for the traveler
-
-                Be direct and specific. Mention city/highway names. Write in English.
-                If no issues found, confirm the route appears clear.
-                """.strip()
+                    You are a Pakistan travel assistant providing route intelligence.
+        
+                    USER'S ROUTE: {query}
+                    {fallback_instruction}
+                    CURRENT INFORMATION:
+                    {context}
+        
+                    Write a concise, helpful travel briefing (3-5 sentences) for this route covering:
+                    1. Overall road safety status
+                    2. Key weather conditions
+                    3. Any active alerts or issues
+                    4. A practical recommendation for the traveler
+        
+                    Be direct and specific. Mention city/highway names. Write in English.
+                    If no issues found, confirm the route appears clear.
+                    """.strip()
 
         try:
             summary = await self._generate_summary(prompt)

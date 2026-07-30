@@ -45,10 +45,10 @@ GB_KKH_KEYWORDS = {"skardu", "gilgit", "hunza", "gb", "kkh","astore",'baltistan'
 
 NHMP_ROAD_MAP: dict[tuple[str, str], tuple[str, str, str]] = {
     ("islamabad", "peshawar"): ("Motorway", "M1/Motorway M-1", "Islamabad to Peshawar"),
-    ("peshawar", "islamabad"): ("Hightway", "N5/GT Road", "Peshawar to Islamabad"),
+    ("peshawar", "islamabad"): ("Highway", "N5/GT Road", "Peshawar to Islamabad"),
 
-    ("lahore", "islamabad"): ("Motorway", "M2/Motorway M-2", "Lahore to Islamabad"),
-    ("islamabad", "lahore"): ("Hightway", "N5/GT Road", "Islamabad to Lahore"),
+    ("lahore", "islamabad"): ("All", "M2/Motorway M-2", "Lahore to Islamabad"),
+    ("islamabad", "lahore"): ("Highway", "N5/GT Road", "Islamabad to Lahore"),
 
     ("lahore", "abdul hakim"): ("Motorway", "M3/Motorway M-3", "Lahore to Abdul Hakim"),
     ("abdul hakim", "lahore"): ("Motorway", "M3/Motorway M-3", "Lahore to Abdul Hakim"),
@@ -59,18 +59,18 @@ NHMP_ROAD_MAP: dict[tuple[str, str], tuple[str, str, str]] = {
     ("multan", "sukkur"): ("Motorway", "M5/Motorway M-5", "Multan to Sukkur"),
     ("sukkur", "multan"): ("Motorway", "M5/Motorway M-5", "Multan to Sukkur"),
 
-    ("lahore", "multan"): ("Hightway", "N5/GT Road", "Lahore to Multan"),
-    ("multan", "lahore"): ("Hightway", "N5/GT Road", "Lahore to Multan"),
+    ("lahore", "multan"): ("Highway", "N5/GT Road", "Lahore to Multan"),
+    ("multan", "lahore"): ("Highway", "N5/GT Road", "Lahore to Multan"),
 
-    ("multan", "rahimyar khan"): ("Hightway", "N5/GT Road", "Multan to Rahimyar Khan"),
-    ("rahimyar khan", "multan"): ("Hightway", "N5/GT Road", "Multan to Rahimyar Khan"),
+    ("multan", "rahimyar khan"): ("Highway", "N5/GT Road", "Multan to Rahimyar Khan"),
+    ("rahimyar khan", "multan"): ("Highway", "N5/GT Road", "Multan to Rahimyar Khan"),
 
-    ("sukkur", "rahimyar khan"): ("Hightway", "N5/GT Road", "Rahimyar Khan to Sukkur"),
-    ("rahimyar khan", "sukkur"): ("Hightway", "N5/GT Road", "Rahimyar Khan to Sukkur"),
+    ("sukkur", "rahimyar khan"): ("Highway", "N5/GT Road", "Rahimyar Khan to Sukkur"),
+    ("rahimyar khan", "sukkur"): ("Highway", "N5/GT Road", "Rahimyar Khan to Sukkur"),
 
 
-    ("sukkur", "hyderabad"): ("Hightway", "N5/GT Road", "Sukkur to Hyderabad"),
-    ("hyderabad", "sukkur"): ("Hightway", "N5/GT Road", "Sukkur to Hyderabad"),
+    ("sukkur", "hyderabad"): ("Highway", "N5/GT Road", "Sukkur to Hyderabad"),
+    ("hyderabad", "sukkur"): ("Highway", "N5/GT Road", "Sukkur to Hyderabad"),
 
 
     ("hyderabad", "karachi"): ("Motorway", "M9/Motorway M-9", "Hyderabad to Karachi"),
@@ -92,26 +92,26 @@ NHMP_ROAD_MAP: dict[tuple[str, str], tuple[str, str, str]] = {
 
     ("karachi", "karachi"): ("Expressway", "LEW/Lyari Expressway", "Karachi to Karachi"),
 
-    ("gwadar", "makola"): ("Hightway", "N10/Coastal Highway", "Gwadar to Makola"),
-    ("makola", "gwadar"): ("Hightway", "N10/Coastal Highway", "Gwadar to Makola"),
+    ("gwadar", "makola"): ("Highway", "N10/Coastal Highway", "Gwadar to Makola"),
+    ("makola", "gwadar"): ("Highway", "N10/Coastal Highway", "Gwadar to Makola"),
 
-    ("hub", "uthal"): ("Hightway", "N25/RDC Highway", "Hub to Uthal"),
-    ("uthal", "hub"): ("Hightway", "N25/RDC Highway", "Hub to Uthal"),
+    ("hub", "uthal"): ("Highway", "N25/RDC Highway", "Hub to Uthal"),
+    ("uthal", "hub"): ("Highway", "N25/RDC Highway", "Hub to Uthal"),
 
-    ("kalat", "quetta"): ("Hightway", "N25/RDC Highway", "Kalat to Quetta"),
-    ("quetta", "kalat"): ("Hightway", "N25/RDC Highway", "Kalat to Quetta"),
+    ("kalat", "quetta"): ("Highway", "N25/RDC Highway", "Kalat to Quetta"),
+    ("quetta", "kalat"): ("Highway", "N25/RDC Highway", "Kalat to Quetta"),
 
-    ("quetta", "pishin"): ("Hightway", "N25/RDC Highway", "Quetta to Pishin"),
-    ("pishin", "quetta"): ("Hightway", "N25/RDC Highway", "Quetta to Pishin"),
+    ("quetta", "pishin"): ("Highway", "N25/RDC Highway", "Quetta to Pishin"),
+    ("pishin", "quetta"): ("Highway", "N25/RDC Highway", "Quetta to Pishin"),
 
-    ("kuchlak", "muslim bagh"): ("Hightway", "N50/N-50", "Kuchlak to Muslim Bagh"),
-    ("muslim bagh", "kuchlak"): ("Hightway", "N50/N-50", "Kuchlak to Muslim Bagh"),
+    ("kuchlak", "muslim bagh"): ("Highway", "N50/N-50", "Kuchlak to Muslim Bagh"),
+    ("muslim bagh", "kuchlak"): ("Highway", "N50/N-50", "Kuchlak to Muslim Bagh"),
 
-    ("sehwan", "ratodero"): ("Hightway", "N55/Indus Highway", "Sehwan to Ratodero"),
-    ("ratodero", "sehwan"): ("Hightway", "N55/Indus Highway", "Sehwan to Ratodero"),
+    ("sehwan", "ratodero"): ("Highway", "N55/Indus Highway", "Sehwan to Ratodero"),
+    ("ratodero", "sehwan"): ("Highway", "N55/Indus Highway", "Sehwan to Ratodero"),
 
-    ("islamabad", "murree"): ("Hightway", "N75/IMDC", "Islamabad to Murree"),
-    ("murree", "islamabad"): ("Hightway", "N75/IMDC", "Islamabad to Murree"),
+    ("islamabad", "murree"): ("Highway", "N75/IMDC", "Islamabad to Murree"),
+    ("murree", "islamabad"): ("Highway", "N75/IMDC", "Islamabad to Murree"),
 }
 
 
@@ -181,44 +181,30 @@ class ScraperService:
     def _empty_result(self, src, err):
         return {"source": src, "url": "", "content": "", "scrape_success": False, "error": err}
 
-    async def _fetch_nhmp_direct(self, origin: str, destination: str) -> Dict[str, Any]:
-        print("*"*20)
-        print("Are we here2?")
-        print("*"*20)
-        route = self._detect_road(origin, destination)
-        if route is None:
-            print("*"*20)
-            print("Are we here TWO 2?")
-            print("*"*20)
-            logger.info(f"{origin}->{destination} not in NHMP road list, skipping NHMP_API call")
-            return self._empty_result("NHMP_API", "Route not tracked by NHMP")
-        print("*"*20)
-        print("Are we here?")
-        print("*"*20)
-        network, road, section = route
-        params = {"network": network, "road": road, "section": section, "filter": "true"}
+    async def _fetch_nhmp_direct(self) -> Dict[str, Any]:
+
+        # route = self._detect_road(origin, destination)
+        # if route is None:
+        #
+        #     logger.info(f"{origin}->{destination} not in NHMP road list, skipping NHMP_API call")
+        #     return self._empty_result("NHMP_API", "Route not tracked by NHMP")
+
+        # network, road, section = route
+        params = {"network": "All", "road": "All", "section": "All", "filter": "true"}
         check = False
         while(1):
-            print("*"*20)
-            print("Are we here?")
-            print("*"*20)
+
             if (check):
-                params = {"network":network , "road": road, "section": section, "filter": "true"}
+                params = {"network": "All", "road": "All", "section": "All", "filter": "true"}
 
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(NHMP_API_ENDPOINT, params=params, timeout=10) as resp:
-                        print("*"*20)
-                        print("Are we here 2 ?")
-                        print("*"*20)
-                        print("Status:", resp.status)
+
                         if resp.status == 200:
                             data = await resp.json()
-                            print("*"*20)
-                            print("url:")
-                            print("NHMP DAta :", data)
-                            print("*"*20)
-                            return {"source": "NHMP_API", "url": str(resp.url), "content": json.dumps(data)[:4000], "scrape_success": True, "error": None}
+
+                            return {"source": "NHMP_API", "url": str(resp.url), "content": json.dumps(data), "scrape_success": True, "error": None}
 
 
                         if resp.status == 404:
@@ -295,7 +281,7 @@ class ScraperService:
 
         
         # 1. NHMP
-        results.append(await self._fetch_nhmp_direct(origin, destination))
+        results.append(await self._fetch_nhmp_direct())
 
        
         

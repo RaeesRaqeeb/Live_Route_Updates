@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: yourpassword
-      POSTGRES_DB: pakistan_route_ai        # ← THIS auto-creates the DB on first run
+      POSTGRES_DB: pakistan_route_db        # ← THIS auto-creates the DB on first run
     ports:
       - "5432:5432"
     volumes:
