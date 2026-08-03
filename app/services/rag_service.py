@@ -18,6 +18,7 @@ class RAGAnswer:
     summary: str
     alert_level: AlertLevel
     alerts: List[RouteAlert]
+    total_tokens: int = 0
 
 
 class RAGService:
@@ -45,10 +46,10 @@ class RAGService:
         return AlertLevel.UNKNOWN
 
     def _build_context(
-        self,
-        items: List[dict],
-        weather_origin: Optional[WeatherInfo],
-        weather_dest: Optional[WeatherInfo],
+            self,
+            items: List[dict],
+            weather_origin: Optional[WeatherInfo],
+            weather_dest: Optional[WeatherInfo],
     ) -> str:
         context_parts = []
 
@@ -80,13 +81,12 @@ class RAGService:
 
         return "\n\n".join(context_parts) if context_parts else "No specific alerts found."
 
-    async def _generate_summary(self, prompt: str) -> str:
+    async def _generate_summary(self, prompt: str) -> tuple[str, dict]:
         try:
             await groq_limiter.acquire()
         except Exception as e:
             logger.info("There is some issue here:",str(e))
-            
-        print("WE ARE REACHING HERE OR NOT?")
+
         # Updated to use OpenAI Chat Completions format for Groq
         response = await self.client.chat.completions.create(
             model=self.model,
@@ -97,11 +97,17 @@ class RAGService:
             temperature=0.3,
             max_tokens=600,
         )
-        
+
         text = response.choices[0].message.content.strip() if response.choices else ""
         if not text:
             raise ValueError("Empty response from Groq")
-        return text
+
+        usage = {
+            "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
+            "completion_tokens": response.usage.completion_tokens if response.usage else 0,
+            "total_tokens": response.usage.total_tokens if response.usage else 0,
+        }
+        return text, usage
 
     def _normalize_docs(self, scraped_docs: List[dict]) -> List[dict]:
         """
@@ -143,21 +149,32 @@ class RAGService:
 
         # ── Step 1: only run extraction on genuinely raw docs ──
         extracted_from_raw = []
+        extraction_usage = {"total_tokens": 0}
         if raw_docs:
             from app.services.llm_extractor import LLMExtractor
             extractor = LLMExtractor()
 
-            extracted_items = await extractor.batch_extract(raw_docs, query)
+            # Bug fix: batch_extract returns (extracted, usage) -- a 2-tuple.
+            # This used to do `for src_dict, item_model in extracted_items`
+            # directly on that 2-tuple, which unpacks the *outer* tuple
+            # (the list and the usage dict) instead of the items inside it.
+            extracted, extraction_usage = await extractor.batch_extract(raw_docs, query)
+            print("*"*20)
+            print("Extracted summary:",extracted)
+            print("*"*20)
 
-            # Unpack the tuple into 'src_dict' and 'item_model'
-            for src_dict, item_model in extracted_items:
+            for src_dict, item_model in extracted:
                 extracted_from_raw.append({
                     "headline": item_model.headline,
                     "issue_type": item_model.issue_type.value,
                     "severity": item_model.severity.value,
                     "route_affected": item_model.route_affected,
                     "summary": item_model.summary,
-                    "corridor_fallback": item_model.corridor_fallback,
+                    # Defensive: corridor_fallback is a property of *how we
+                    # looked the data up*, not something the LLM extraction
+                    # schema is guaranteed to return per-item. getattr avoids
+                    # an AttributeError if the schema doesn't define it.
+                    "corridor_fallback": getattr(item_model, "corridor_fallback", False),
                     # Pull source metadata directly from the source dictionary
                     "source": src_dict.get("source", "scraped"),
                     "source_url": src_dict.get("url", ""),
@@ -191,6 +208,7 @@ class RAGService:
                 ),
                 alert_level=AlertLevel.UNKNOWN,
                 alerts=[],
+                total_tokens=extraction_usage.get("total_tokens", 0) if isinstance(extraction_usage, dict) else 0,
             )
 
         # ── Step 4: Generate final narrative summary ──
@@ -225,12 +243,17 @@ class RAGService:
                     """.strip()
 
         try:
-            summary = await self._generate_summary(prompt)
+            summary, narrative_usage = await self._generate_summary(prompt)
         except Exception as e:
             logger.error(f"RAG summary generation error: {e}")
             summary = f"Route information for {query}. {len(all_items)} alert(s) found."
+            narrative_usage = {"total_tokens": 0}
 
         # ── Step 5: Build RouteAlert list (each with its own correct URL) ──
+        print("*"*20)
+        print("All item data:",all_items)
+        print("*"*20)
+
         alerts = [
             RouteAlert(
                 headline=i["headline"],
@@ -245,4 +268,16 @@ class RAGService:
             for i in all_items
         ]
 
-        return RAGAnswer(summary=summary, alert_level=alert_level, alerts=alerts)
+        total_tokens = (
+                           extraction_usage.get("total_tokens", 0) if isinstance(extraction_usage, dict) else 0
+                       ) + (
+                           narrative_usage.get("total_tokens", 0) if isinstance(narrative_usage, dict) else 0
+                       )
+        print("*"*20)
+
+        print("Final returning from Rag:",summary)
+        print("Alert level:",alert_level)
+        print("Alerts:",alerts)
+        print("*"*20)
+
+        return RAGAnswer(summary=summary, alert_level=alert_level, alerts=alerts, total_tokens=total_tokens)

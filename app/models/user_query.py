@@ -2,7 +2,11 @@
 from sqlalchemy import Column, String, Text, Integer, Float,Boolean
 from app.models.base import TimestampMixin
 from app.core.database import Base
-
+from sqlalchemy import Column, String, Text, Float, Integer, Boolean, JSON, DateTime, func
+from sqlalchemy.dialects.postgresql import JSONB
+from uuid import uuid4
+# logger = logging.getLogger(__name__)
+# logger.setLevel(logging.DEBUG)
 
 class UserQuery(Base, TimestampMixin):
     """
@@ -10,13 +14,22 @@ class UserQuery(Base, TimestampMixin):
     """
     __tablename__ = "user_queries"
 
-    session_id         = Column(String(100), index=True)
-    origin_input       = Column(String(200))      # Raw user input: "Lahore"
-    destination_input  = Column(String(200))      # Raw user input: "Islamabad"
-    normalized_origin  = Column(String(100))      # After LLM normalization
-    normalized_dest    = Column(String(100))
-    response_time_ms   = Column(Float)            # How fast we answered
-    cache_hit          = Column(Boolean, default=False)
-    sources_used       = Column(Text)             # JSON list of sources used
-    final_answer       = Column(Text)             # What we told the user
-    token_count        = Column(Integer, default=0)
+    id             = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    session_id     = Column(String, nullable=False)
+    origin         = Column(String, nullable=True)
+    destination    = Column(String, nullable=True)
+    query_text     = Column(Text, nullable=True)
+    query_type     = Column(String, nullable=True)
+    response_time_ms = Column(Float, nullable=True)
+    cache_hit      = Column(Boolean, default=False)
+    sources_used   = Column(JSON, nullable=True)         # list of strings
+    final_answer   = Column(Text, nullable=True)          # short summary
+    full_result    = Column(JSONB, nullable=True)         # entire RouteInfoResponse as JSON
+    alert_level    = Column(String, nullable=True)
+    total_alerts   = Column(Integer, nullable=True, default=0)
+    data_freshness_minutes = Column(Integer, nullable=True)
+    token_count    = Column(Integer, nullable=True, default=0)
+    alerts         = Column(JSONB, nullable=True)         # structured alert list
+    weather_origin = Column(JSONB, nullable=True)
+    weather_destination = Column(JSONB, nullable=True)
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())

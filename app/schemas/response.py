@@ -33,7 +33,7 @@ class RouteAlert(BaseModel):
     route_affected: Optional[str] = None
     summary: str
     source: str                            # dawn, geo, nhmp, etc.
-    source_url: str
+    source_url: Optional[str]= None
     scraped_at: datetime
     is_verified: bool = False
 

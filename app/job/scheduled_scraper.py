@@ -19,7 +19,6 @@ async def get_active_routes(session) -> list[Route]:
     result = await session.execute(select(Route).where(Route.is_active == True))
     return result.scalars().all()
 
-
 async def run_scheduled_scrape():
     logger.info("=== Scheduled scrape job started ===")
     scraper = ScraperService()
@@ -27,16 +26,18 @@ async def run_scheduled_scrape():
     extractor = LLMExtractor()
 
     async with AsyncSessionLocal() as session:
-        routes = await get_active_routes(session)
-        logger.info(f"Scraping {len(routes)} active routes")
-
-
         try:
-            await scrape_extract_and_store(session, routes, scraper, graph_api, extractor)
-
+            await scrape_extract_and_store(
+                route=None,
+                session=session,
+                scraper=scraper,
+                graph_api=graph_api,
+                extractor=extractor,
+            )
         except Exception as e:
-            logger.error(f"Pipeline failed for route : {e}")
-        await asyncio.sleep(5)  # politeness gap between routes
+            logger.error(f"Pipeline failed: {e}", exc_info=True)
+
+        await asyncio.sleep(5)  # politeness gap
 
         # Expire stale alerts
         await session.execute(

@@ -10,14 +10,106 @@ from app.utils.text_cleaner import TextCleaner
 from app.utils.rate_limiter import groq_limiter
 
 logger = get_logger(__name__)
-import json
 
-import json
-import json
+
+SINGLE_ITEM_CHAR_LIMIT = 4500
+
+import re
 from datetime import datetime
+def deduplicate_nhmp_batch(batch: list[dict]) -> list[dict]:
+    """
+    For NHMP records (source starts with '__nhmp__'), keep only the single
+    latest record per unique content payload, determined by 'post_created_at'.
+    Records older than 7 days from today are discarded as stale.
+    All other source types are passed through unchanged.
+    """
+    from datetime import datetime, timezone, timedelta
 
+    def is_nhmp(rec: dict) -> bool:
+        src = rec.get("source") or ""
+        return src.startswith("__nhmp__")
 
+    now = datetime.now(timezone.utc)
+    max_age = timedelta(days=7)
 
+    best: dict[str, dict] = {}  # key = content → best record so far
+
+    for rec in batch:
+        if not is_nhmp(rec):
+            continue
+        key = (rec.get("content") or "").strip()
+        if not key:
+            continue
+        ts_str = rec.get("post_created_at") or ""
+        try:
+            ts = datetime.fromisoformat(ts_str)
+            # Make timezone-aware if naive
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            ts = datetime.min.replace(tzinfo=timezone.utc)
+
+        # ── Staleness check: skip if older than 7 days ──
+        if (now - ts) > max_age:
+            logger.debug(
+                f"deduplicate_nhmp_batch: dropping stale record "
+                f"{rec.get('source')} (age={(now - ts).days} days)"
+            )
+            continue
+
+        if key not in best or ts > best[key]["_ts"]:
+            best[key] = {**rec, "_ts": ts}
+
+    out: list[dict] = []
+    seen_keys: set[str] = set()
+
+    for rec in batch:
+        if not is_nhmp(rec):
+            out.append(rec)
+            continue
+        key = (rec.get("content") or "").strip()
+        winner = best.get(key)
+        if (
+                winner
+                and rec.get("post_created_at") == winner.get("post_created_at")
+                and key not in seen_keys
+        ):
+            seen_keys.add(key)
+            out.append({k: v for k, v in winner.items() if k != "_ts"})
+
+    return out
+
+def filter_latest_nhmp_closure(content: str) -> str:
+    """
+    NHMP content can arrive as several closure entries concatenated together
+    (e.g. multiple records for the same route pasted back to back, separated
+    by blank lines). We only want the most recent one in the LLM prompt so
+    older/superseded closures don't get treated as current.
+
+    Each block's header line ([SRC_N] / timestamp / source) is stripped before
+    comparison so that blocks with identical route/alert data but different
+    injected metadata are still recognised as duplicates. Only the first
+    (latest) unique block is returned.
+    """
+    if not content:
+        return ""
+
+    _HEADER_RE = re.compile(r'^\[SRC_\d+\]\s*\(time:[^)]*\)\s*\(source:[^)]*\)\s*', re.MULTILINE)
+
+    seen: set[str] = set()
+    unique_blocks: list[str] = []
+
+    for block in content.split("\n\n"):
+        stripped = block.strip()
+        if not stripped:
+            continue
+        # Normalise: remove injected header so duplicate payloads are detected
+        normalised = _HEADER_RE.sub("", stripped).strip()
+        if normalised and normalised not in seen:
+            seen.add(normalised)
+            unique_blocks.append(stripped)   # keep original (with header) for output
+
+    return unique_blocks[0] if unique_blocks else content.strip()
 
 
 class LLMExtractor:
@@ -30,10 +122,14 @@ class LLMExtractor:
         self.cleaner = TextCleaner()
         self.semaphore = asyncio.Semaphore(max_concurrency)
 
+
+
+
+
     async def extract_route_info(
-        self,
-        raw_data: RawScrapeData,
-        route_query: str,
+            self,
+            raw_data: RawScrapeData,
+            route_query: str,
     ) -> Optional[ExtractedRouteInfo]:
         """
         Use Groq + Llama to extract structured route information.
@@ -50,7 +146,7 @@ class LLMExtractor:
             Source: {raw_data.source}
 
             Text:
-            {cleaned_content[:4500]}
+            {cleaned_content[:SINGLE_ITEM_CHAR_LIMIT]}
             """
 
         try:
@@ -92,7 +188,7 @@ class LLMExtractor:
             self,
             scraped_results: List[dict],
             route_query: str,
-    ) -> tuple[List[tuple[dict, ExtractedRouteInfo]], dict]: # Updated type hint
+    ) -> tuple[List[tuple[dict, "BatchExtractedItem"]], dict]:
         """
         Extract structured data from all scraped results in a SINGLE Groq call.
         """
@@ -102,15 +198,28 @@ class LLMExtractor:
         ]
 
         if not valid_results:
-            return [], {} # FIXED: Return 2 values
+            return [], {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-        MAX_ITEMS_PER_BATCH = 10
-        PER_ITEM_CHAR_LIMIT = 1200
+        # MAX_ITEMS_PER_BATCH = 10
+        # PER_ITEM_CHAR_LIMIT = 1200
 
+        # Fix: MAX_ITEMS_PER_BATCH was declared but never applied, so a
+        # data-rich route (e.g. GB/KKH) could still blow past Groq's
+        # context/rate limits in a single call. Slice and log if we drop items.
         batch = valid_results
+        # if len(valid_results) > MAX_ITEMS_PER_BATCH:
+        #     logger.warning(
+        #         f"batch_extract: {len(valid_results)} valid items for '{route_query}', "
+        #         f"truncating to {MAX_ITEMS_PER_BATCH} (TODO: chunk into multiple batches instead of dropping)"
+        #     )
+        print("*"*20)
+        print("batch from database:",batch)
+        print("*"*20)
 
         blocks = []
         source_map = {}
+
+        batch = deduplicate_nhmp_batch(batch)   # ← add this
 
         for i, result in enumerate(batch):
             if result["source"] == "NHMP_API":
@@ -128,9 +237,12 @@ class LLMExtractor:
             blocks.append(
                 f"[{source_id}] (time: {post_time}) (source: {result['source']})\n{cleaned}"
             )
-
+        print("*"*20)
+        print("Cleaned Data:",blocks)
+        print("*"*20)
+        # exit()
         if not blocks:
-            return [], {} # FIXED: Return 2 values
+            return [], {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         prompt = f"""Below are {len(blocks)} separate text snippets scraped from different sources about travel conditions in Pakistan.
     
@@ -173,12 +285,11 @@ class LLMExtractor:
                 return [], usage # FIXED: Return 2 values
 
             parsed: BatchExtractionResult = response.choices[0].message.parsed
-
+            print("*"*20)
+            print("Parsed Data:",parsed)
+            print("*"*20)
+            # exit()
             extracted = []
-            logger.info(
-                f"Groq batch-extracted {len(extracted)} relevant items from {len(blocks)} sources "
-                f"(1 API call, {usage['total_tokens']} tokens)"
-            )
             for item in parsed.items:
                 if not item.is_route_related:
                     continue
@@ -188,9 +299,17 @@ class LLMExtractor:
                     continue
                 extracted.append((src, item))
 
-            logger.info(f"Groq batch-extracted {len(extracted)} relevant items from {len(blocks)} sources (1 API call)")
-            return extracted, usage # Already correct
+            logger.info(
+                f"Groq batch-extracted {len(extracted)} relevant items from {len(blocks)} sources "
+                f"(1 API call, {usage['total_tokens']} tokens)"
+            )
+
+            # print("*"*20)
+            # print("Extracted summaru:",extracted)
+            # print("*"*20)
+
+            return extracted, usage
 
         except Exception as e:
             logger.error(f"Groq batch extraction error: {e}")
-            return [], {} # FIXED: Return 2 values
+            return [], {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}

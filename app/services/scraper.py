@@ -114,6 +114,11 @@ NHMP_ROAD_MAP: dict[tuple[str, str], tuple[str, str, str]] = {
     ("murree", "islamabad"): ("Highway", "N75/IMDC", "Islamabad to Murree"),
 }
 
+# In scraper.py — add this URL to your scrape targets
+
+NHMP_HTML_URL = "https://beta.nhmp.gov.pk/TA/Public/ViewTravel.aspx"
+
+from datetime import datetime, timezone
 
 def _get_fit_markdown(result) -> str:
     if hasattr(result, "markdown") and result.markdown:
@@ -204,7 +209,7 @@ class ScraperService:
                         if resp.status == 200:
                             data = await resp.json()
 
-                            return {"source": "NHMP_API", "url": str(resp.url), "content": json.dumps(data), "scrape_success": True, "error": None}
+                            return {"source": "NHMP_API", "url": "http://cpo.nhmp.gov.pk:6789/TravelAdvisory/TravelAdvisory", "content": json.dumps(data), "scrape_success": True, "error": None}
 
 
                         if resp.status == 404:
@@ -274,7 +279,35 @@ class ScraperService:
         logger.info(f"Total Success: {len([r for r in results if r['scrape_success']])}/{len(results)}")
         return results
 
-    
+    async def scrape_nhmp_html(self) -> List[Dict[str, Any]]:
+        """Scrape NHMP HTML via crawl4ai (handles any JS rendering)."""
+        try:
+            async with AsyncWebCrawler(config=self.browser_config) as crawler:
+                result = await crawler.arun(
+                    url=NHMP_HTML_URL,
+                    config=CrawlerRunConfig(
+                        word_count_threshold=0,      # keep short table rows
+                        excluded_tags=["nav", "footer", "header"],
+                        magic=True,
+                        wait_for="css:table",        # wait for advisory tables
+                    ),
+                )
+                html = result.html or ""   # RAW html — parse_nhmp_html needs tags, not markdown
+                if result.success and html and len(html) > 500:
+                    return [{
+                        "source":          "NHMP_HTML",
+                        "url":             NHMP_HTML_URL,
+                        "content":         html,
+                        "scrape_success":  True,
+                        "error":           None,
+                        "post_created_at": datetime.now(timezone.utc).isoformat(),
+                    }]
+                return [self._empty_result("NHMP_HTML", "Empty or too short")]
+        except Exception as e:
+            logger.error(f"NHMP HTML crawl4ai scrape failed: {e}")
+            return [self._empty_result("NHMP_HTML", str(e))]
+
+
     async def scrape_route_news(self, origin: str, destination: str) -> List[Dict[str, Any]]:
         results = []
 
